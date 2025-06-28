@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  geek-news:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: geek-news-generator
+    ports:
+      - "8000:8000"
+    environment:
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-northeast-2}
+      - SCHEDULE_HOUR=${SCHEDULE_HOUR:-8}
+      - SCHEDULE_MINUTE=${SCHEDULE_MINUTE:-0}
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 

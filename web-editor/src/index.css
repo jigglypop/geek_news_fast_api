@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'BlackHanSans';
+  src: url('./assets/fonts/BlackHanSans-Regular.woff2') format('woff2'),
+       url('./assets/fonts/BlackHanSans-Regular.woff') format('woff'),
+       url('./assets/fonts/BlackHanSans-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-Thin.otf') format('opentype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-ExtraLight.otf') format('opentype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-Light.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-ExtraBold.otf') format('opentype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/fonts/Pretendard-Black.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+body {
+  margin: 0;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.canvas-container {
+  width: var(--canvas-width, 1080px);
+  height: calc(var(--canvas-width, 1080px) / 16 * 9);
+  background: var(--canvas-background);
+}
+
+.element-text {
+  width: 100%;
+  height: 100%;
+  font-size: var(--font-size);
+  color: var(--color);
+  font-family: var(--font-family);
+  text-align: var(--text-align);
+  background-color: var(--background-color);
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.element-container {
+  width: 100%;
+  height: 100%;
+  background-color: var(--background-color);
+  border-radius: var(--border-radius);
+  border: var(--border-width, 0) solid var(--border-color, transparent);
+  box-shadow: var(--box-shadow);
+  backdrop-filter: var(--backdrop-filter);
+  -webkit-backdrop-filter: var(--backdrop-filter);
+}
+
+.resize-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background-color: white;
+  border: 2px solid #3b82f6; /* theme.colors.blue[500] */
+  border-radius: 9999px;
+  z-index: 50;
+}
+
+.resize-handle-cursor-ew { cursor: ew-resize; }
+.resize-handle-cursor-ns { cursor: ns-resize; }
+.resize-handle-cursor-nwse { cursor: nwse-resize; }
+.resize-handle-cursor-nesw { cursor: nesw-resize; }
+
+.resize-handle-top { top: -8px; }
+.resize-handle-bottom { bottom: -8px; }
+.resize-handle-left { left: -8px; }
+.resize-handle-right { right: -8px; }
+
+.draggable-item {
+  cursor: grab;
+}
+
+.draggable-item.is-dragging {
+  cursor: grabbing;
+}
+
+/* 스크롤바 스타일링 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #1f2937;
+}

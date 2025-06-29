@@ -9,4 +9,5 @@ lxml
 boto3
 Pillow
 APScheduler 
-openai 
+openai
+aiofiles 

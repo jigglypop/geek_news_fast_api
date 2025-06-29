@@ -113,7 +113,7 @@ a:hover {
 }
 
 .title-sub {
-    font-size: {{cover_subtitle_size}};
+    font-size: {{cover_subtitle}};
     color: rgba(255, 255, 255, 0.9);
     margin: 0;
     font-weight: 300;
@@ -130,7 +130,7 @@ a:hover {
 }
 
 .title-main {
-    font-size: {{cover_title_size}};
+    font-size: {{cover_title}};
     color: rgba(255, 255, 255, 0.9);
     margin: 0 0 60px 0;
     font-weight: 900;
@@ -262,13 +262,13 @@ a:hover {
     color: {{cover_background}};
     padding: 8px 20px;
     border-radius: 20px;
-    font-size: {{news_category_size}};
+    font-size: {{news_category}};
     font-weight: 600;
     margin-bottom: 20px;
 }
 
 .category-title {
-    font-size: {{news_number_size}};
+    font-size: {{news_number}};
     color: white;
     text-align: center;
     margin: 0;
@@ -308,7 +308,7 @@ a:hover {
 }
 
 .news-title {
-    font-size: {{news_title_size}};
+    font-size: {{news_title}};
     font-weight: 800;
     color: rgba(255, 255, 255, 0.8);
     text-decoration: underline;
@@ -323,7 +323,7 @@ a:hover {
 }
 
 .news-description {
-    font-size: {{news_description_size}};
+    font-size: {{news_description}};
     line-height: 1.6;
     color: #333;
     margin: 0;
@@ -339,7 +339,7 @@ a:hover {
 
 .link-item {
     margin-bottom: 12px;
-    font-size: {{link_text_size}};
+    font-size: {{link_text}};
     color: #333;
 }
 
@@ -379,7 +379,7 @@ a:hover {
 }
 
 .summary-main-title {
-    font-size: {{summary_title_size}};
+    font-size: {{summary_title}};
     color: white;
     margin: 0 0 20px 0;
     font-weight: 900;
@@ -399,7 +399,7 @@ a:hover {
 }
 
 .summary-subtitle {
-    font-size: {{summary_subtitle_size}};
+    font-size: {{summary_subtitle}};
     color: white;
     margin: 0 0 30px 0;
     font-weight: 700;
@@ -460,7 +460,7 @@ a:hover {
 }
 
 .summary-title {
-    font-size: {{summary_item_title_size}};
+    font-size: {{summary_item_title}};
     color: white;
     margin: 0;
     font-weight: 600;

@@ -31,7 +31,9 @@ RUN pip install --no-cache-dir uv
 COPY requirements.txt .
 RUN uv pip install --system --no-cache-dir -r requirements.txt && \
     uv pip install --system --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
-RUN playwright install-deps chromium
+# Playwright 의존성 설치 및 브라우저 설치
+RUN playwright install-deps chromium && \
+    playwright install chromium
 FROM dependencies AS production
 RUN groupadd -r appuser && useradd -r -g appuser -d /home/appuser -m appuser
 RUN mkdir -p /app/.cache && chown -R appuser:appuser /app/.cache
@@ -42,6 +44,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
 ENV TOKENIZERS_PARALLELISM=false
 COPY --chown=appuser:appuser . .
 RUN mkdir -p output/images && chown -R appuser:appuser output
+RUN mkdir -p data/saved_states && chown -R appuser:appuser data
 USER appuser
 RUN playwright install chromium
 EXPOSE 8000

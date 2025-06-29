@@ -1,0 +1,113 @@
+GeekNews 프로젝트는 FastAPI 기반 뉴스 생성 서비스입니다.
+
+레이어 아키텍처를 엄격히 준수하세요:
+- Core Layer (config.py, generator.py): 비즈니스 로직만 담당
+- API Layer (server.py): HTTP 요청 처리와 스케줄링만 담당  
+- Presentation Layer (templates/): UI 템플릿만 담당
+- 의존성은 Presentation → API → Core 단방향으로만 허용
+
+파일별 책임을 명확히 구분하세요:
+- config.py는 설정값만 관리합니다 (PATH_CONFIG, CRAWLING_CONFIG, OUTPUT_CONFIG, COLOR_CONFIG, FONT_CONFIG, TEXT_CONFIG)
+- generator.py는 뉴스 크롤링, AI 요약, 이미지 생성 로직만 담당합니다
+- server.py는 FastAPI 엔드포인트와 스케줄러만 관리합니다
+- templates/ 폴더는 HTML 템플릿과 CSS 스타일만 포함합니다
+
+크롤링 설정:
+- 크롤링 대상 사이트는 config.py의 CRAWLING_CONFIG에 정의합니다
+- 각 사이트별 URL, CSS 셀렉터, 크롤링 규칙을 명시합니다
+- 크롤링 URL 예시:
+  - GeekNews: https://news.hada.io/
+  - 기타 기술 뉴스 사이트들
+- 사이트 구조 변경에 대비한 셀렉터 업데이트 방안을 고려하세요
+- 크롤링 실패 시 대체 소스나 캐시된 데이터 활용을 고려하세요
+
+코딩 스타일 규칙:
+- 함수와 변수는 snake_case 사용
+- 상수는 UPPER_SNAKE_CASE 사용
+- CSS 클래스는 kebab-case 사용
+- 주석은 작성하지 마세요. 코드가 자명해야 합니다
+- 의미없는 빈 줄을 넣지 마세요
+- 이모지를 사용하지 마세요
+- 새 파일 생성을 최소화하고 기존 파일을 확장하세요
+
+핵심 원칙:
+- Single Responsibility: 한 파일은 한 가지 책임만 가집니다
+- 기존 API 엔드포인트 스펙을 변경하지 마세요
+- 새 설정 추가 시 기존 동작을 보장하는 기본값을 설정하세요
+- 크롤링 → 요약 → 템플릿 렌더링 → 이미지 생성 파이프라인을 보호하세요
+
+비동기 처리 패턴:
+- HTTP 요청은 httpx.AsyncClient를 사용하세요
+- 파일 I/O는 asyncio.to_thread를 활용하세요
+- 병렬 처리는 asyncio.gather를 사용하세요
+- 크롤링 시 동시 요청 수를 제한하여 서버 부하를 방지하세요
+
+로깅 형식을 통일하세요:
+- 일반 정보: print(f"[모듈명] 상태: 상세 정보")
+- 오류: print(f"[ERROR] 오류: {error}")
+- 성공: print(f"[SUCCESS] 완료: {result}")
+- 크롤링 로그: print(f"[CRAWLING] 사이트명: 수집된 뉴스 {count}개")
+
+환경변수 관리:
+- 민감한 정보는 .env 파일로 분리합니다
+- 필수 환경변수: OPENAI_API_KEY, HUGGINGFACE_TOKEN, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+- 스케줄 설정: SCHEDULE_HOUR, SCHEDULE_MINUTE
+- 크롤링 관련: USER_AGENT, REQUEST_TIMEOUT
+
+API 설계 원칙:
+- RESTful 원칙을 준수하세요
+- 응답 형식을 통일하세요: {message, status, data, timestamp}
+- 적절한 HTTP 상태 코드를 사용하세요
+- 크롤링은 다음 페이지를 크롤링 합니다. 따라서, 메인 페이지에 있는 페이지를 그대로 링크 클릭하면 안됩니다.
+(https://news.hada.io/topic?id={아이디})
+
+출력 파일 구조:
+- output/geek_news_YYYYMMDDHHMI.pdf (최종 PDF)
+- output/geek_news.html (임시 HTML)
+- output/geek_news.png (최종 이미지)
+- output/images/geek_page_XX.png (페이지별 이미지)
+
+디자인 원칙:
+- 디자인을 변경하라고 명확히 지시하기 전에 절대로 컨셉을 함부로 변경하지 마세요
+
+크롤링 에러 처리:
+- 네트워크 타임아웃 설정 (기본 30초)
+- 사이트 구조 변경 감지 및 알림
+- robots.txt 준수
+- User-Agent 헤더 설정
+- 요청 간 적절한 딜레이 (1-3초)
+- 크롤링 실패 시 재시도 (최대 3회)
+
+AI 요약 처리:
+- 크롤링된 뉴스는 AI로 요약합니다
+- 요약 길이는 원문의 20-30% 수준으로 유지합니다
+- 기술 용어는 그대로 보존합니다
+- 한국어 요약 품질을 우선시합니다
+
+에러 처리:
+- 크롤링 실패에 대비하세요
+- AI API 호출 실패를 처리하세요
+- S3 업로드 실패 시 로컬 저장으로 폴백하세요
+- 재시도 로직에 지수 백오프를 구현하세요
+
+성능 최적화:
+- AI 모델은 싱글톤 패턴으로 재사용하세요
+- 임시 파일을 자동으로 정리하세요
+- HTTP 요청에 적절한 타임아웃을 설정하세요
+- 메모리 사용량을 관리하세요
+- 크롤링 결과를 캐싱하여 중복 요청을 방지하세요
+
+보안 고려사항:
+- API 키를 로그에 출력하지 마세요
+- 파일 업로드 시 확장자를 검증하세요
+- 경로 순회 공격을 방지하세요
+- 크롤링 시 개인정보가 포함되지 않도록 주의하세요
+
+변경 작업 순서:
+1. config.py에서 설정값을 수정하세요
+2. generator.py에서 로직을 구현하세요
+3. templates/에서 디자인을 적용하세요
+4. server.py에서 API를 연결하세요
+5. 테스트하고 검증하세요
+
+이 프로젝트는 뉴스 크롤링, AI 요약, 이미지 생성의 핵심 파이프라인을 보호하면서 확장 가능한 구조를 유지해야 합니다.

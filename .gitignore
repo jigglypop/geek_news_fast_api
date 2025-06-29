@@ -90,3 +90,6 @@ public
 # Windows
 Thumbs.db
 .env
+
+# Data directories
+data/

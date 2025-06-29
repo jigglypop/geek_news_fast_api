@@ -21,6 +21,12 @@ dependencies = [
     "protobuf",
     "python-dotenv",
     "crawlee",
+    "fastapi>=0.115.14",
+    "boto3>=1.38.46",
+    "pillow>=11.2.1",
+    "openai>=1.93.0",
+    "apscheduler>=3.11.0",
+    "uvicorn>=0.34.3",
 ]
 
 [tool.hatch.build.targets.wheel]

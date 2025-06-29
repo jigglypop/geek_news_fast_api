@@ -12,6 +12,7 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 from PIL import Image
 import openai
+from urllib.parse import urljoin
 
 load_dotenv()
 
@@ -23,7 +24,7 @@ class GeekNewsCardGenerator:
         
         if api_type == "huggingface":
             self._init_model()
-        elif api_type == "chatgpt":
+        elif api_type == "openai":
             self._init_chatgpt()
         else:
             raise ValueError(f"지원하지 않는 API 타입: {api_type}")
@@ -31,13 +32,8 @@ class GeekNewsCardGenerator:
         self._init_s3_client()
 
     def _init_model(self):
-        print("한국어 요약 모델 로딩 중...")
+        print("HuggingFace 요약 모델 로딩 중...")
         hf_token = os.getenv('HUGGINGFACE_TOKEN')
-        if not hf_token:
-            print("!!! 중요: HUGGINGFACE_TOKEN 환경 변수를 찾을 수 없습니다. .env 파일을 확인해주세요. !!!")
-        else:
-            print("Hugging Face 토큰을 성공적으로 로드했습니다.")
-            
         self.tokenizer = AutoTokenizer.from_pretrained(
             AI_CONFIG["model_name"], token=hf_token, trust_remote_code=True
         )
@@ -46,253 +42,279 @@ class GeekNewsCardGenerator:
         )
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
-        print("모델 로딩 완료")
+        print("✓ HuggingFace 모델 로딩 완료")
 
+    def _init_chatgpt(self):
+        print("OpenAI API 초기화 중...")
+        self.openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        print("✓ OpenAI API 초기화 완료")
+        
     def _init_s3_client(self):
         self.s3_client = None
-        if S3_CONFIG.get("use_s3"):
+        if S3_CONFIG["use_s3"]:
+            print("S3 클라이언트 초기화 중...")
             try:
-                self.s3_client = boto3.client('s3', region_name=S3_CONFIG["region"])
-                print("S3 클라이언트 초기화 성공")
+                self.s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                    region_name=S3_CONFIG["region"]
+                )
+                print("✓ S3 클라이언트 초기화 완료")
             except NoCredentialsError:
-                print("S3 인증 정보를 찾을 수 없습니다.")
-                self.s3_client = None
+                print("[에러] AWS 자격 증명을 찾을 수 없습니다. .env 파일을 확인하세요.")
             except Exception as e:
-                print(f"S3 클라이언트 초기화 실패: {e}")
-                self.s3_client = None
-    
-    def _init_chatgpt(self):
-        print("ChatGPT API 초기화 중...")
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            print("!!! 중요: OPENAI_API_KEY 환경 변수를 찾을 수 없습니다. .env 파일을 확인해주세요. !!!")
-            raise ValueError("OPENAI_API_KEY가 필요합니다.")
-        else:
-            from openai import OpenAI
-            self.openai_client = OpenAI(api_key=api_key)
-            print("ChatGPT API 초기화 완료")
+                print(f"[에러] S3 클라이언트 초기화 실패: {e}")
 
-    def summarize_text(self, text):
+    async def summarize_text(self, text):
+        if not text or len(text.strip()) < 50:
+            return ""
+
         if self.api_type == "huggingface":
-            return self._summarize_with_huggingface(text)
-        elif self.api_type == "chatgpt":
-            return self._summarize_with_chatgpt(text)
-    
-    def _summarize_with_huggingface(self, text):
+            return await self._summarize_with_huggingface(text)
+        elif self.api_type == "openai":
+            return await self._summarize_with_openai(text)
+        return "지원하지 않는 API 타입입니다."
+
+    async def _summarize_with_huggingface(self, text):
+        if not text or len(text.strip()) < 50:
+            print(f"  [요약 건너뜀] 텍스트가 너무 짧습니다: {text[:100]}")
+            return ""
+        print(f"  [요약 원문] {text[:150]}...")
         try:
+            prompt_template = self.load_template(PATH_CONFIG["summary_prompt"])
+            prompt = prompt_template.format(text=text)
             inputs = self.tokenizer(
-                f"summarize: {text}",
-                return_tensors="pt",
+                prompt,
                 max_length=AI_CONFIG["max_input_length"],
-                truncation=True
+                truncation=True,
+                return_tensors="pt"
             ).to(self.device)
-            
-            outputs = self.model.generate(
-                **inputs,
+            summary_ids = self.model.generate(
+                inputs["input_ids"],
                 max_length=AI_CONFIG["max_output_length"],
                 min_length=AI_CONFIG["min_output_length"],
                 length_penalty=AI_CONFIG["length_penalty"],
                 num_beams=AI_CONFIG["num_beams"],
                 early_stopping=True
             )
-            
-            return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            summary = self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+            print(f"  [요약 성공] {summary.strip()}")
+            return summary.strip()
         except Exception as e:
-            print(f"요약 생성 중 오류 발생: {e}")
-            return text[:150] + "..."
+            print(f"  [요약 실패] 오류: {e}")
+            return "요약 생성에 실패했습니다."
     
-    def _summarize_with_chatgpt(self, text):
+    async def _summarize_with_openai(self, text):
         try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+            response = await asyncio.to_thread(
+                self.openai_client.chat.completions.create,
+                model="gpt-4-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 기술 뉴스를 간결하고 이해하기 쉽게 한국어로 요약하는 전문가입니다."},
-                    {"role": "user", "content": f"다음 내용을 50-150자 내외로 한국어로 요약해주세요:\n\n{text[:2000]}"}
-                ],
-                max_tokens=200,
-                temperature=0.7
+                    {"role": "system", "content": "You are a helpful assistant that summarizes news articles in Korean."},
+                    {"role": "user", "content": f"다음 뉴스를 한국어로 요약해줘: {text}"}
+                ]
             )
-            return response.choices[0].message.content.strip()
+            return response.choices[0].message.content
         except Exception as e:
-            print(f"ChatGPT 요약 생성 중 오류 발생: {e}")
-            return text[:150] + "..."
+            print(f"[에러] OpenAI 요약 실패: {e}")
+            return ""
 
-    async def get_detail(self, topic_id, timeout=CRAWLING_CONFIG["timeout"]):
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            try:
-                url = f"https://news.hada.io/topic?id={topic_id}"
-                print(f"[크롤링] 긱뉴스 상세 페이지 접속 중: {url}")
+    async def get_detail(self, topic_id):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f'https://news.hada.io/topic?id={topic_id}'
                 response = await client.get(url)
-                response.raise_for_status()
-                print(f"[크롤링] 긱뉴스 상세 페이지 다운로드 완료: {url}")
-                
                 soup = BeautifulSoup(response.text, 'lxml')
-                content_div = soup.find('div', class_='topic_content')
-                if content_div:
-                    for tag in content_div.find_all(['script', 'style']):
-                        tag.decompose()
-                    content = content_div.get_text(strip=True)
-                    print(f"[크롤링] 콘텐츠 추출 완료: {len(content)}자")
-                    return content
-                
+                contents_elem = soup.find('div', class_='topic_contents')
+                if contents_elem:
+                    return contents_elem.get_text(separator=' ', strip=True)
+                desc_elem = soup.find('div', class_='topic_desc')
+                if desc_elem:
+                    return desc_elem.get_text(strip=True)
                 return ""
-            except Exception as e:
-                print(f"[크롤링 실패] topic_id={topic_id}: {str(e)}")
-                return ""
+        except Exception as e:
+            print(f"긱뉴스 상세 정보 가져오기 실패: {e}")
+            return ""
 
     async def fetch_news(self):
         async with httpx.AsyncClient(timeout=CRAWLING_CONFIG["timeout"]) as client:
-            try:
-                print(f"\n[크롤링 시작] GeekNews 메인 페이지 접속 중...")
-                print(f"URL: {CRAWLING_CONFIG['base_url']}")
-                response = await client.get(CRAWLING_CONFIG["base_url"])
-                response.raise_for_status()
-                print(f"[크롤링] 메인 페이지 다운로드 완료")
-                
-                soup = BeautifulSoup(response.text, 'lxml')
-                news_items = []
-                
-                topics = soup.find_all('div', class_='topic_row')[:CRAWLING_CONFIG["news_count"]]
-                total_topics = len(topics)
-                print(f"[크롤링] 총 {total_topics}개의 뉴스 항목 발견\n")
-                
-                for idx, topic in enumerate(topics, 1):
-                    try:
-                        print(f"[{idx}/{total_topics}] 뉴스 처리 시작...")
-                        title_elem = topic.find('div', class_='topictitle')
-                        if not title_elem:
-                            print(f"[{idx}/{total_topics}] 제목 요소를 찾을 수 없어 건너뜁니다.")
-                            continue
-                        
-                        title = title_elem.get_text(strip=True)
-                        print(f"[{idx}/{total_topics}] 제목: {title[:50]}...")
-                        
-                        # 원본 링크 추출
-                        link = title_elem.find('a')['href'] if title_elem.find('a') else ''
-                        full_link = link if link.startswith('http') else f"https://news.hada.io{link}"
-                        
-                        # topic_id 추출 (댓글 링크에서)
-                        topic_id = None
-                        comment_link = topic.find('a', href=lambda h: h and '/topic?id=' in h)
-                        if comment_link:
-                            href = comment_link.get('href', '')
-                            if '/topic?id=' in href:
-                                topic_id = href.split('id=')[1].split('&')[0]
-                        
-                        detail_content = ""
-                        if topic_id:
-                            print(f"[{idx}/{total_topics}] 긱뉴스 상세 내용 크롤링 시작...")
-                            detail_content = await self.get_detail(topic_id)
-                        
-                        if detail_content:
-                            print(f"[{idx}/{total_topics}] AI 요약 생성 중...")
-                            summary = self.summarize_text(detail_content)
-                            print(f"[{idx}/{total_topics}] 요약 생성 완료: {len(summary)}자")
-                        else:
-                            summary = ""
-                            print(f"[{idx}/{total_topics}] 상세 내용이 없어 요약을 생성하지 않습니다.")
-                        
-                        news_items.append({
-                            'number': idx,
-                            'title': title,
-                            'summary': summary,
-                            'link': full_link,
-                            'category': 'Tech'
-                        })
-                        
-                        print(f"[{idx}/{total_topics}] ✓ 완료\n")
-                        
-                    except Exception as e:
-                        print(f"[{idx}/{total_topics}] ✗ 오류 발생: {str(e)}\n")
-                        continue
-                
-                print(f"[크롤링 완료] 총 {len(news_items)}개의 뉴스 수집 성공\n")
-                return news_items
-                
-            except Exception as e:
-                print(f"[크롤링 실패] 메인 페이지 접속 오류: {str(e)}")
-                return []
+            response = await client.get(CRAWLING_CONFIG["base_url"])
+            soup = BeautifulSoup(response.text, 'lxml')
+            news_items = []
+            topics = soup.find_all('div', class_='topic_row')[:CRAWLING_CONFIG["news_count"]]
+            for topic in topics:
+                title_elem = topic.find('div', class_='topictitle')
+                if not title_elem: continue
+                title_link = title_elem.find('a')
+                if not title_link: continue
+
+                title = title_link.text.strip()
+                original_link = title_link.get('href', '')
+
+                topic_id = None
+                all_links = topic.find_all('a')
+                for link in all_links:
+                    href = link.get('href', '')
+                    if 'topic?id=' in href:
+                        try:
+                            topic_id = href.split('id=')[-1].split('&')[0]
+                            break
+                        except:
+                            pass
+
+                desc_elem = topic.find('span', class_='topicdesc')
+                desc = desc_elem.text.strip() if desc_elem else ''
+
+                if topic_id:
+                    detailed_desc = await self.get_detail(topic_id)
+                    if detailed_desc and len(detailed_desc) > len(desc):
+                        desc = detailed_desc
+
+                summarized_desc = await self.summarize_text(desc)
+                news_items.append({
+                    'title': title,
+                    'description': summarized_desc if summarized_desc else "요약 정보가 없습니다.",
+                    'link': original_link,
+                    'topic_id': topic_id
+                })
+            return news_items
 
     def get_character_sources(self):
-        character_urls = {}
-        for i in range(1, 9):
-            character_urls[str(i)] = f"{S3_CONFIG['base_url']}/{S3_CONFIG['character_prefix']}character/{i}.png"
-        character_urls['all'] = f"{S3_CONFIG['base_url']}/{S3_CONFIG['character_prefix']}character/all.png"
-        return character_urls
+        base_url = S3_CONFIG["base_url"]
+        prefix = S3_CONFIG["character_prefix"]
+        
+        # S3에서 직접 파일 목록을 가져오거나, 고정된 이름 사용
+        # 여기서는 고정된 이름 사용
+        names = IMAGE_CONFIG.get("character_names", [])
+        
+        # urljoin을 사용하여 올바른 URL 생성
+        return {name: urljoin(base_url, f"{prefix}{name}.png") for name in names}
 
     def load_template(self, template_name):
         template_path = os.path.join(self.template_dir, template_name)
         with open(template_path, 'r', encoding='utf-8') as f:
             return f.read()
 
-    def _render_cover_page(self):
-        template = self.load_template(PATH_CONFIG["cover_template"])
-        characters = self.get_character_sources()
-        
-        return template.replace('{cover_background}', COLOR_CONFIG["cover_background"]) \
-                      .replace('{cover_subtitle}', TEXT_CONFIG["cover_subtitle"]) \
-                      .replace('{main_character_src}', characters[IMAGE_CONFIG["main_character"]]) \
-                      .replace('{qr_src}', f"{S3_CONFIG['base_url']}/{S3_CONFIG['qr_code_key']}") \
-                      .replace('{speech_bubble_emoji}', EMOJI_CONFIG["speech_bubble"]) \
-                      .replace('{speech_bubble_text}', TEXT_CONFIG["speech_bubble_text"]) \
-                      .replace('{lightbulb_emoji}', EMOJI_CONFIG["lightbulb"]) \
-                      .replace('{star_emoji}', EMOJI_CONFIG["star"])
+    def _render_cover_page(self, main_character_src, qr_src):
+        cover_template = self.load_template(PATH_CONFIG["cover_template"])
+        character_html = f'<img src="{main_character_src}" class="character main-character" alt="캐릭터" />' if main_character_src else ''
+        qr_html = f'<div class="qr-section"><img src="{qr_src}" class="qr-code" alt="QR코드" /></div>' if qr_src else ''
 
-    def _render_news_pages(self, news_items):
-        template = self.load_template(PATH_CONFIG["news_template"])
-        characters = self.get_character_sources()
-        pages = []
+        return cover_template.replace('{cover_subtitle}', TEXT_CONFIG["cover_subtitle"]) \
+                           .replace('{cover_title}', TEXT_CONFIG["cover_title"]) \
+                           .replace('{character_image}', character_html) \
+                           .replace('{qr_section}', qr_html)
+
+    def _render_news_pages(self, news_items, page_characters):
+        news_template = self.load_template(PATH_CONFIG["news_template"])
+        pages_html = ""
         
-        for item in news_items:
-            page = template.replace('{news_background}', COLOR_CONFIG["news_background"]) \
-                          .replace('{category}', item['category']) \
-                          .replace('{news_prefix}', TEXT_CONFIG["news_card_prefix"]) \
-                          .replace('{number}', str(item['number'])) \
-                          .replace('{title}', item['title']) \
-                          .replace('{summary}', item['summary']) \
-                          .replace('{character_src}', characters.get(str(item['number']), characters['1']))
-            pages.append(page)
-        
-        return '\n'.join(pages)
+        for i in range(0, len(news_items), 2):
+            item1 = news_items[i]
+            item2 = news_items[i + 1] if i + 1 < len(news_items) else None
+            
+            character_src = page_characters[i // 2 % len(page_characters)] if page_characters else None
+            character_html = f'<img src="{character_src}" class="page-character" alt="캐릭터" />' if character_src else ''
+
+            def get_topic_category(news):
+                if not news: return ""
+                link_lower = news.get('link', '').lower()
+                title_lower = news.get('title', '').lower()
+                if "github" in link_lower or "git" in title_lower: return "개발"
+                elif "youtube" in link_lower: return "영상"
+                elif "blog" in link_lower: return "블로그"
+                elif "ai" in title_lower or "gemini" in title_lower: return "AI"
+                elif "데이터" in title_lower or "data" in title_lower: return "데이터"
+                return "기술"
+
+            page_html = news_template.replace('{news_prefix}', TEXT_CONFIG.get("news_card_prefix", "GeekNews")) \
+                                     .replace('{number1}', str(i + 1)) \
+                                     .replace('{category1}', get_topic_category(item1)) \
+                                     .replace('{title1}', item1['title']) \
+                                     .replace('{summary1}', item1.get('description', '')) \
+                                     .replace('{character_src}', character_html)
+
+            if item2:
+                page_html = page_html.replace('{number2}', str(i + 2)) \
+                                     .replace('{category2}', get_topic_category(item2)) \
+                                     .replace('{title2}', item2['title']) \
+                                     .replace('{summary2}', item2.get('description', ''))
+            else:
+                page_html = page_html.replace('&amp; #{number2}', '') \
+                                     .replace('{number2}', "") \
+                                     .replace('{category2}', "") \
+                                     .replace('{title2}', "") \
+                                     .replace('{summary2}', "") \
+                                     .replace('<div class="news-separator"></div>', '') \
+                                     .replace('<div class="news-content-section second-news">', '<div class="news-content-section second-news" style="display:none;">')
+
+            pages_html += page_html
+            
+        return pages_html
 
     def _render_summary_page(self, news_items):
-        template = self.load_template(PATH_CONFIG["summary_template"])
-        item_template = self.load_template(PATH_CONFIG["summary_item_template"])
-        characters = self.get_character_sources()
-        
-        summary_items = []
-        for item in news_items:
-            summary_item = item_template.replace('{number}', str(item['number'])) \
-                                      .replace('{title}', item['title'])
-            summary_items.append(summary_item)
-        
-        return template.replace('{summary_background}', COLOR_CONFIG["summary_background"]) \
-                      .replace('{summary_title}', TEXT_CONFIG["summary_title"]) \
-                      .replace('{summary_subtitle}', TEXT_CONFIG["summary_subtitle"]) \
-                      .replace('{summary_items}', '\n'.join(summary_items)) \
-                      .replace('{all_character_src}', characters[IMAGE_CONFIG["all_characters"]]) \
-                      .replace('{count}', str(len(news_items))) \
-                      .replace('{summary_footer_text}', TEXT_CONFIG["summary_footer_text"].format(count=len(news_items))) \
-                      .replace('{summary_source}', TEXT_CONFIG["summary_source"])
+        current_date = datetime.now().strftime("%Y년 %m월 %d일")
+        summary_item_template = self.load_template(PATH_CONFIG["summary_item_template"])
+        summary_items_html = ""
+
+        for index, news in enumerate(news_items, 1):
+            topic_category = "기술"
+            link_lower = news.get('link', '').lower()
+            title_lower = news.get('title', '').lower()
+            if "github" in link_lower or "git" in title_lower: topic_category = "개발"
+            elif "ai" in title_lower or "gemini" in title_lower: topic_category = "AI"
+            elif "데이터" in title_lower or "data" in title_lower: topic_category = "데이터"
+
+            summary_items_html += summary_item_template.format(
+                number=index,
+                category=topic_category,
+                title=news['title']
+            )
+
+        summary_template = self.load_template(PATH_CONFIG["summary_template"])
+        return summary_template.format(
+            summary_title=TEXT_CONFIG["summary_title"],
+            summary_date=current_date,
+            summary_subtitle=TEXT_CONFIG["summary_subtitle"],
+            summary_items=summary_items_html,
+            summary_footer=TEXT_CONFIG["summary_footer_text"].format(count=len(news_items)),
+            summary_source=TEXT_CONFIG["summary_source"]
+        )
 
     async def create_html(self, news_items):
-        cover = self._render_cover_page()
-        news_pages = self._render_news_pages(news_items)
-        summary = self._render_summary_page(news_items)
+        available_characters = self.get_character_sources()
+        main_character_src = available_characters.get(IMAGE_CONFIG["main_character"])
+        page_characters = [
+            src for name, src in available_characters.items()
+            if name != IMAGE_CONFIG["main_character"] and name != IMAGE_CONFIG["all_characters"]
+        ]
+        qr_src = f"{S3_CONFIG.get('base_url', '')}{S3_CONFIG.get('qr_code_key', '')}"
         
-        return f"{cover}\n{news_pages}\n{summary}"
+        cover_html = self._render_cover_page(main_character_src, qr_src)
+        news_html = self._render_news_pages(news_items, page_characters)
+        summary_html = self._render_summary_page(news_items)
+
+        return f"{cover_html}{news_html}{summary_html}"
 
     def create_styles(self):
-        template = self.load_template(PATH_CONFIG["style_file"])
-        
-        style = template.replace('{cover_background}', COLOR_CONFIG["cover_background"]) \
-                       .replace('{news_background}', COLOR_CONFIG["news_background"]) \
-                       .replace('{summary_background}', COLOR_CONFIG["summary_background"])
-        
-        for key, value in FONT_CONFIG.items():
-            style = style.replace(f'{{{key}_size}}', value)
-            
-        return style
+        """템플릿과 설정값을 결합하여 최종 CSS를 생성합니다."""
+        base_css = self.load_template(PATH_CONFIG["style_file"])
+
+        # 교체할 모든 설정값을 하나의 딕셔너리로 통합
+        replacements = {
+            **{f"{{{{{k}}}}}": v for k, v in COLOR_CONFIG.items()},
+            **{f"{{{{{k}_size}}}}": v for k, v in FONT_CONFIG.items()},
+            "{{page_width}}": str(OUTPUT_CONFIG["page_width"]),
+            "{{page_height}}": str(OUTPUT_CONFIG["page_height"]),
+        }
+
+        # 딕셔너리를 순회하며 모든 플레이스홀더 교체
+        customized_css = base_css
+        for placeholder, value in replacements.items():
+            customized_css = customized_css.replace(placeholder, value)
+
+        return customized_css
 
     async def generate_all(self, html_content, css_content):
         print("\n[이미지 생성] 개별 페이지 이미지 생성 시작...")
@@ -328,14 +350,26 @@ class GeekNewsCardGenerator:
             total_pages = len(pages)
             print(f"[이미지 생성] 총 {total_pages}개 페이지 발견")
             
-            for i, page_elem in enumerate(pages):
-                print(f"[이미지 생성] 페이지 {i+1}/{total_pages} 처리 중...")
-                if OUTPUT_CONFIG["generate_png"]:
-                    await page_elem.screenshot(path=f"{self.output_dir}/images/geek_page_{i+1:02d}.png")
-                    print(f"  └─ PNG 저장 완료: geek_page_{i+1:02d}.png")
-                if OUTPUT_CONFIG["generate_jpg"]:
-                    await page_elem.screenshot(path=f"{self.output_dir}/images/geek_page_{i+1:02d}.jpg", quality=OUTPUT_CONFIG["image_quality"])
-                    print(f"  └─ JPG 저장 완료: geek_page_{i+1:02d}.jpg")
+            image_dir = PATH_CONFIG["image_dir"]
+            for i, page_element in enumerate(pages, 1):
+                if OUTPUT_CONFIG.get("generate_png", True):
+                    png_path = os.path.join(image_dir, f"geek_page_{i:02d}.png")
+                    await page_element.screenshot(
+                        path=png_path, 
+                        type='png', 
+                        omit_background=False
+                    )
+                    print(f"  └─ PNG 생성 완료: {png_path}")
+
+                if OUTPUT_CONFIG.get("generate_jpg", True):
+                    jpg_path = os.path.join(image_dir, f"geek_page_{i:02d}.jpg")
+                    await page_element.screenshot(
+                        path=jpg_path, 
+                        type='jpeg', 
+                        quality=OUTPUT_CONFIG.get("image_quality", 95),
+                        omit_background=False
+                    )
+                    print(f"  └─ JPG 생성 완료: {jpg_path}")
             
             await browser.close()
             print("[이미지 생성] 개별 페이지 이미지 생성 완료\n")
@@ -344,19 +378,16 @@ class GeekNewsCardGenerator:
         print("[통합 이미지 생성] 시작...")
         combined_template = self.load_template("combined_template.html")
         
-        cover = self._render_cover_page()
-        news_pages = self._render_news_pages(news_items)
-        summary = self._render_summary_page(news_items)
+        html_content = await self.create_html(news_items)
         
-        all_pages = f"{cover}\n{news_pages}\n{summary}"
-        
-        full_html = combined_template.replace('{all_pages_content}', all_pages)
+        full_html = combined_template.replace('{all_pages_content}', html_content)
         
         async with async_playwright() as p:
             print("[통합 이미지 생성] 브라우저 시작 중...")
             browser = await p.chromium.launch(headless=True)
             
-            total_pages = 2 + len(news_items)
+            num_news_pages = (len(news_items) + 1) // 2
+            total_pages = 2 + num_news_pages
             total_height = OUTPUT_CONFIG["page_height"] * total_pages
             print(f"[통합 이미지 생성] 전체 높이: {total_height}px ({total_pages} 페이지)")
             

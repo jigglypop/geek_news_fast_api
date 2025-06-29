@@ -101,8 +101,6 @@ async def shutdown_event():
 async def generate_news_card(request: GenerateRequest, background_tasks: BackgroundTasks):
     """수동으로 카드뉴스 생성을 트리거하는 엔드포인트"""
     api_type = request.api_type
-    
-    # API 타입 유효성 검사
     if api_type not in ["huggingface", "chatgpt"]:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 API 타입: {api_type}")
     

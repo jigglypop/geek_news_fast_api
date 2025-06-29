@@ -8,8 +8,8 @@ import ElementToolbar from './ElementToolbar';
 import ElementProperties from './ElementProperties';
 
 interface PropertyPanelProps {
-  theme: Theme;
-  onThemeChange: (theme: Theme) => void;
+  theme?: Theme;
+  onThemeChange?: (theme: Theme) => void;
 }
 
 const PropertyPanel: React.FC<PropertyPanelProps> = ({
@@ -23,7 +23,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
   const updateElement = useElementStore((state) => state.updateElement);
 
   const updateTheme = (updates: Partial<Theme>) => {
-    onThemeChange({ ...theme, ...updates });
+    if (theme && onThemeChange) {
+      onThemeChange({ ...theme, ...updates });
+    }
   };
 
   const updateColors = (updates: Partial<Theme['colors']>) => {
@@ -57,7 +59,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
           <button
             className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'elements' 
-                ? 'bg-gray-700 text-white shadow-sm' 
+                ? 'bg-gray-600 text-white shadow-sm' 
                 : 'text-gray-400 hover:text-gray-200'
             }`}
             onClick={() => setActiveTab('elements')}
@@ -65,17 +67,19 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
             <Edit className="w-4 h-4" />
             요소 편집
           </button>
-          <button
-            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'theme' 
-                ? 'bg-gray-700 text-white shadow-sm' 
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-            onClick={() => setActiveTab('theme')}
-          >
-            <Palette className="w-4 h-4" />
-            테마 설정
-          </button>
+          {theme && (
+            <button
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'theme' 
+                  ? 'bg-gray-600 text-white shadow-sm' 
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+              onClick={() => setActiveTab('theme')}
+            >
+              <Palette className="w-4 h-4" />
+              테마 설정
+            </button>
+          )}
         </div>
       </div>
 
@@ -89,7 +93,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
               onUpdateElement={updateElement}
             />
           </div>
-        ) : (
+        ) : theme ? (
           <div>
             <h3 className="text-lg font-semibold mb-4 text-white">테마 설정</h3>
             
@@ -230,7 +234,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
               </div>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

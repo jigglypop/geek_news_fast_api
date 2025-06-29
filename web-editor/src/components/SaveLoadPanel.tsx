@@ -5,10 +5,9 @@ import { useElementStore } from '../store/elementStore';
 interface SaveLoadPanelProps {
   newsData: any;
   theme: any;
-  currentMode: 'cover' | 'news' | 'summary';
 }
 
-export default function SaveLoadPanel({ newsData, theme, currentMode }: SaveLoadPanelProps) {
+export default function SaveLoadPanel({ newsData, theme }: SaveLoadPanelProps) {
   const { 
     saveToServer, 
     loadFromServer, 
@@ -18,7 +17,7 @@ export default function SaveLoadPanel({ newsData, theme, currentMode }: SaveLoad
     lastSavedAt
   } = usePersistStore();
   
-  const { elements } = useElementStore();
+  const { categoryElements, setCategoryElements } = useElementStore();
   const [savedStates, setSavedStates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -34,7 +33,7 @@ export default function SaveLoadPanel({ newsData, theme, currentMode }: SaveLoad
       }, 30000);
       return () => clearInterval(saveInterval);
     }
-  }, [autoSaveEnabled, elements, newsData, theme]);
+  }, [autoSaveEnabled, categoryElements, newsData, theme]);
 
   const loadSavedStates = async () => {
     const states = await listServerStates();
@@ -42,24 +41,18 @@ export default function SaveLoadPanel({ newsData, theme, currentMode }: SaveLoad
   };
 
   const prepareStateData = () => {
-    const elementsByMode = {
-      cover: currentMode === 'cover' ? elements : [],
-      news: currentMode === 'news' ? elements : [],
-      summary: currentMode === 'summary' ? elements : []
-    };
-
     return {
       version: "1.0",
-      news_data: {
-        fetched_at: new Date().toISOString(),
+      newsData: {
+        fetchedAt: new Date().toISOString(),
         items: newsData
       },
-      edited_elements: elementsByMode,
+      editedElements: categoryElements,
       theme: theme,
       config: {
-        schedule_time: "00:00",
-        auto_save: autoSaveEnabled,
-        export_format: ["pdf", "png"]
+        scheduleTime: "00:00",
+        autoSave: autoSaveEnabled,
+        exportFormat: ["pdf", "png"]
       }
     };
   };
@@ -87,9 +80,18 @@ export default function SaveLoadPanel({ newsData, theme, currentMode }: SaveLoad
     setIsLoading(true);
     try {
       const state = await loadFromServer(filename);
-      if (state) {
+      if (state && state.editedElements) {
+        // 각 카테고리의 요소들을 로드
+        if (state.editedElements.cover) {
+          setCategoryElements('cover', state.editedElements.cover);
+        }
+        if (state.editedElements.news) {
+          setCategoryElements('news', state.editedElements.news);
+        }
+        if (state.editedElements.summary) {
+          setCategoryElements('summary', state.editedElements.summary);
+        }
         setMessage('불러오기 완료');
-        window.location.reload();
       }
     } catch (error) {
       setMessage('불러오기 실패');

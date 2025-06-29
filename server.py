@@ -7,21 +7,23 @@ import os
 import time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 import aiofiles
 from playwright.async_api import async_playwright
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
+import textwrap
 
 app = FastAPI()
 
 # --- Cache-Konfiguration ---
 CACHE = {
     "news": None,
-    "last_updated": 0
+    "last_updated": 0,
+    "last_crawled_date": None
 }
 CACHE_TTL_SECONDS = 600  # 10 Minuten
 
@@ -67,18 +69,85 @@ class ExportRequest(BaseModel):
 DATA_DIR = Path("./data/saved_states")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+async def load_cached_news_from_volume():
+    """볼륨에서 오늘 날짜의 크롤링 데이터를 로드합니다."""
+    try:
+        today = datetime.now().strftime("%Y%m%d")
+        
+        # 오늘 날짜의 자동 크롤링 파일 찾기
+        auto_files = sorted(DATA_DIR.glob(f"auto_crawled_{today}_*.json"), reverse=True)
+        manual_files = sorted(DATA_DIR.glob(f"manual_refresh_{today}_*.json"), reverse=True)
+        
+        # 모든 오늘 날짜 파일을 시간순으로 정렬
+        all_files = sorted(auto_files + manual_files, 
+                          key=lambda f: f.stat().st_mtime, 
+                          reverse=True)
+        
+        if all_files:
+            latest_file = all_files[0]
+            async with aiofiles.open(latest_file, "r", encoding="utf-8") as f:
+                content = await f.read()
+                data = json.loads(content)
+            
+            if "news_items" in data:
+                CACHE["news"] = data["news_items"]
+                CACHE["last_updated"] = time.time()
+                CACHE["last_crawled_date"] = today
+                
+                crawled_at = data.get("crawled_at", "Unknown")
+                print(f"[CACHE] 볼륨에서 캐시 로드 완료: {latest_file.name}")
+                print(f"[CACHE] 크롤링 시간: {crawled_at}, 뉴스 개수: {len(data['news_items'])}")
+                return True
+        
+        # 오늘 데이터가 없으면 어제 데이터라도 로드
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        yesterday_files = sorted(DATA_DIR.glob(f"*_{yesterday}_*.json"), reverse=True)
+        
+        if yesterday_files:
+            latest_file = yesterday_files[0]
+            async with aiofiles.open(latest_file, "r", encoding="utf-8") as f:
+                content = await f.read()
+                data = json.loads(content)
+            
+            if "news_items" in data:
+                CACHE["news"] = data["news_items"]
+                CACHE["last_updated"] = time.time() - CACHE_TTL_SECONDS  # 캐시 즉시 만료 설정
+                CACHE["last_crawled_date"] = yesterday
+                
+                print(f"[CACHE] 어제 데이터 로드: {latest_file.name}")
+                return True
+                
+    except Exception as e:
+        print(f"[ERROR] 볼륨에서 캐시 로드 실패: {e}")
+    
+    return False
+
 @app.get("/api/news", response_model=List[NewsItem])
 async def get_news(api_type: Optional[str] = "huggingface", force_refresh: bool = False):
     """
     GeekNews를 크롤링하고 요약하여 뉴스 목록을 반환합니다.
-    결과는 10분 동안 캐시됩니다.
+    우선순위: 메모리 캐시 → 볼륨 데이터 → 새로 크롤링
     `force_refresh=true` 쿼리 파라미터를 사용하여 캐시를 무시하고 새로고침할 수 있습니다.
     """
     current_time = time.time()
+    today = datetime.now().strftime("%Y%m%d")
     
-    # 캐시 확인
+    # 1. 메모리 캐시 확인 (force_refresh가 아닌 경우)
     if not force_refresh and CACHE["news"] and (current_time - CACHE["last_updated"] < CACHE_TTL_SECONDS):
-        print("[캐시] 캐시된 뉴스 데이터를 반환합니다.")
+        print("[CACHE] 메모리 캐시에서 뉴스 데이터를 반환합니다.")
+        return CACHE["news"]
+    
+    # 2. 볼륨에서 오늘 데이터 확인 (force_refresh가 아닌 경우)
+    if not force_refresh and CACHE["last_crawled_date"] != today:
+        volume_loaded = await load_cached_news_from_volume()
+        if volume_loaded and CACHE["news"]:
+            print("[CACHE] 볼륨에서 로드한 뉴스 데이터를 반환합니다.")
+            return CACHE["news"]
+    
+    # 3. 오늘 이미 크롤링했는지 확인 (force_refresh가 아닌 경우)
+    if not force_refresh and CACHE["last_crawled_date"] == today and CACHE["news"]:
+        print("[CACHE] 오늘 이미 크롤링한 데이터를 반환합니다.")
+        CACHE["last_updated"] = current_time  # TTL 갱신
         return CACHE["news"]
 
     if api_type not in fetchers:
@@ -92,6 +161,7 @@ async def get_news(api_type: Optional[str] = "huggingface", force_refresh: bool 
         # 캐시 업데이트
         CACHE["news"] = news_items
         CACHE["last_updated"] = current_time
+        CACHE["last_crawled_date"] = today
         
         # force_refresh인 경우 자동 저장
         if force_refresh:
@@ -128,6 +198,8 @@ def read_root():
         "cache_status": {
             "cached": CACHE["news"] is not None,
             "last_updated": time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(CACHE["last_updated"])),
+            "last_crawled_date": CACHE["last_crawled_date"],
+            "news_count": len(CACHE["news"]) if CACHE["news"] else 0,
             "ttl_seconds": CACHE_TTL_SECONDS
         },
         "scheduler_status": {
@@ -175,6 +247,7 @@ async def scheduled_news_fetch():
         news_items = await fetcher.fetch_news()
         CACHE["news"] = news_items
         CACHE["last_updated"] = time.time()
+        CACHE["last_crawled_date"] = datetime.now().strftime("%Y%m%d")
         print(f"[SCHEDULER] 정기 뉴스 크롤링 완료: {len(news_items)}개 뉴스")
         
         # 크롤링 후 자동 저장
@@ -199,6 +272,9 @@ async def scheduled_news_fetch():
 
 @app.on_event("startup")
 async def startup_event():
+    # 서버 시작 시 볼륨에서 캐시 데이터 로드
+    await load_cached_news_from_volume()
+    
     scheduler.add_job(
         scheduled_news_fetch,
         CronTrigger(hour=schedule_hour, minute=schedule_minute),
@@ -330,35 +406,72 @@ async def export_content(request: ExportRequest):
             }
         
         elif request.export_format in ["png", "pdf"]:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                page = await browser.new_page(viewport={'width': 1080, 'height': 1080})
+            # Playwright가 실패하면 간단한 이미지 생성으로 대체
+            try:
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=True)
+                    page = await browser.new_page(viewport={'width': 1080, 'height': 1080})
+                    
+                    await page.set_content(request.html_content)
+                    await page.wait_for_load_state('networkidle')
+                    
+                    if request.export_format == "png":
+                        filename = output_dir / f"geek_news_{request.page_type}_{request.page_index:02d}_{timestamp}.png"
+                        await page.screenshot(path=str(filename), full_page=False)
+                        print(f"[EXPORT] PNG 저장 완료: {filename}")
+                    
+                    elif request.export_format == "pdf":
+                        filename = output_dir / f"geek_news_{request.page_type}_{timestamp}.pdf"
+                        await page.pdf(
+                            path=str(filename),
+                            format='A4',
+                            print_background=True,
+                            margin={'top': '0', 'right': '0', 'bottom': '0', 'left': '0'}
+                        )
+                        print(f"[EXPORT] PDF 저장 완료: {filename}")
+                    
+                    await browser.close()
+                    
+                return {
+                    "status": "success",
+                    "filename": filename.name,
+                    "format": request.export_format
+                }
+            except Exception as browser_error:
+                print(f"[WARNING] Playwright 실행 실패, 대체 방법 사용: {browser_error}")
                 
-                await page.set_content(request.html_content)
-                await page.wait_for_load_state('networkidle')
-                
-                if request.export_format == "png":
+                # 캐시된 뉴스 데이터로 간단한 이미지 생성
+                if request.export_format == "png" and CACHE["news"]:
                     filename = output_dir / f"geek_news_{request.page_type}_{request.page_index:02d}_{timestamp}.png"
-                    await page.screenshot(path=str(filename), full_page=False)
-                    print(f"[EXPORT] PNG 저장 완료: {filename}")
-                
-                elif request.export_format == "pdf":
-                    filename = output_dir / f"geek_news_{request.page_type}_{timestamp}.pdf"
-                    await page.pdf(
-                        path=str(filename),
-                        format='A4',
-                        print_background=True,
-                        margin={'top': '0', 'right': '0', 'bottom': '0', 'left': '0'}
-                    )
-                    print(f"[EXPORT] PDF 저장 완료: {filename}")
-                
-                await browser.close()
-                
-            return {
-                "status": "success",
-                "filename": filename.name,
-                "format": request.export_format
-            }
+                    
+                    # 간단한 이미지 생성 (1080x1080)
+                    img = Image.new('RGB', (1080, 1080), color=(33, 33, 33))
+                    draw = ImageDraw.Draw(img)
+                    
+                    # 제목 텍스트
+                    title_text = f"GeekNews - {request.page_type.upper()}"
+                    draw.text((540, 100), title_text, fill=(255, 255, 255), anchor="mm")
+                    
+                    # 날짜
+                    date_text = datetime.now().strftime("%Y-%m-%d")
+                    draw.text((540, 150), date_text, fill=(200, 200, 200), anchor="mm")
+                    
+                    # 뉴스 개수 정보
+                    if CACHE["news"]:
+                        info_text = f"캐시된 뉴스: {len(CACHE['news'])}개"
+                        draw.text((540, 540), info_text, fill=(150, 150, 150), anchor="mm")
+                    
+                    img.save(filename)
+                    print(f"[EXPORT] 대체 PNG 저장 완료: {filename}")
+                    
+                    return {
+                        "status": "success",
+                        "filename": filename.name,
+                        "format": "png",
+                        "method": "fallback"
+                    }
+                else:
+                    raise HTTPException(status_code=500, detail=f"내보내기 실패: {browser_error}")
         
         else:
             raise HTTPException(status_code=400, detail="지원하지 않는 형식입니다")

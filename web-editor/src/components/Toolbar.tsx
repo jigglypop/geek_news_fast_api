@@ -1,7 +1,8 @@
 import React from 'react';
-import { Download, Save, Eye, FileText, BarChart3, RefreshCw } from 'lucide-react';
+import { Download, Save, Eye, FileText, BarChart3, RefreshCw, Undo2, Redo2 } from 'lucide-react';
 import type { Theme } from '../types';
 import { THEME_PRESETS } from '../utils/themeGenerator';
+import { useElementStore } from '../store/elementStore';
 
 interface ToolbarProps {
   theme: Theme;
@@ -16,6 +17,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onPreviewModeChange,
   onRefresh
 }) => {
+  const { undo, redo, canUndo, canRedo } = useElementStore();
 
   const handleSave = () => {
     // This function might need reimplementation later
@@ -89,6 +91,34 @@ const Toolbar: React.FC<ToolbarProps> = ({
         >
           <BarChart3 className="w-4 h-4" />
           요약
+        </button>
+        
+        <div className="w-px h-8 bg-gray-600 mx-2" />
+        
+        <button
+          onClick={undo}
+          disabled={!canUndo()}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            canUndo() 
+              ? 'bg-gray-700 hover:bg-gray-600 cursor-pointer' 
+              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+          }`}
+        >
+          <Undo2 className="w-4 h-4" />
+          되돌리기
+        </button>
+        
+        <button
+          onClick={redo}
+          disabled={!canRedo()}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            canRedo() 
+              ? 'bg-gray-700 hover:bg-gray-600 cursor-pointer' 
+              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+          }`}
+        >
+          <Redo2 className="w-4 h-4" />
+          다시하기
         </button>
       </div>
 

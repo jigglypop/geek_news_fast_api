@@ -7,13 +7,13 @@ interface ExportPanelProps {
   theme: any;
 }
 
-export default function ExportPanel({ previewMode, newsItems, theme }: ExportPanelProps) {
+export default function ExportPanel({ previewMode, theme }: ExportPanelProps) {
   const { elements } = useElementStore();
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'png' | 'pdf' | 'html'>('png');
   const [message, setMessage] = useState<string | null>(null);
 
-  const generateHTML = (pageType: string, pageIndex: number = 0) => {
+  const generateHTML = (pageType: string) => {
     const canvasElement = document.querySelector('.draggable-canvas') as HTMLElement;
     if (!canvasElement) return '';
 

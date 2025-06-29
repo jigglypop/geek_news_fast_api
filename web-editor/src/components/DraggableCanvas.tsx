@@ -72,15 +72,40 @@ const DraggableCanvas: React.FC<DraggableCanvasProps> = ({
       
       const { x, y } = info.offset;
 
-      if (corner.includes('Right')) newSize.width = Math.max(20, element.size.width + x);
-      if (corner.includes('Left')) {
-        newSize.width = Math.max(20, element.size.width - x);
-        newPosition.x = element.position.x + x;
-      }
-      if (corner.includes('Bottom')) newSize.height = Math.max(20, element.size.height + y);
-      if (corner.includes('Top')) {
-        newSize.height = Math.max(20, element.size.height - y);
-        newPosition.y = element.position.y + y;
+      // 이미지의 경우 비율 유지
+      if (element.type === 'image') {
+        const aspectRatio = element.size.width / element.size.height;
+        
+        // 대각선 핸들인 경우
+        if ((corner === 'topLeft' || corner === 'bottomRight') || 
+            (corner === 'topRight' || corner === 'bottomLeft')) {
+          // X 변화량을 기준으로 비율 유지
+          const deltaX = corner.includes('Right') ? x : -x;
+          const newWidth = Math.max(20, element.size.width + deltaX);
+          const newHeight = newWidth / aspectRatio;
+          
+          newSize.width = newWidth;
+          newSize.height = newHeight;
+          
+          if (corner.includes('Left')) {
+            newPosition.x = element.position.x - deltaX;
+          }
+          if (corner.includes('Top')) {
+            newPosition.y = element.position.y - (newHeight - element.size.height);
+          }
+        }
+      } else {
+        // 기존 로직 (텍스트, 컨테이너)
+        if (corner.includes('Right')) newSize.width = Math.max(20, element.size.width + x);
+        if (corner.includes('Left')) {
+          newSize.width = Math.max(20, element.size.width - x);
+          newPosition.x = element.position.x + x;
+        }
+        if (corner.includes('Bottom')) newSize.height = Math.max(20, element.size.height + y);
+        if (corner.includes('Top')) {
+          newSize.height = Math.max(20, element.size.height - y);
+          newPosition.y = element.position.y + y;
+        }
       }
 
       updateElement({ ...element, size: newSize, position: newPosition });
@@ -158,7 +183,7 @@ const DraggableCanvas: React.FC<DraggableCanvasProps> = ({
               <img
                 src={element.imageUrl}
                 alt="element"
-                className="w-full h-full object-cover pointer-events-none"
+                className="w-full h-full object-contain pointer-events-none"
               />
             )}
             {element.type === 'container' && (

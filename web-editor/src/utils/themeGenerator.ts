@@ -1,6 +1,6 @@
-import type { Theme, NewsItem } from '../types';
+import type { Theme } from '../types';
 
-export const THEME_PRESETS: Record<string, Omit<Theme, 'id' | 'name'>> = {
+export const THEME_PRESETS: Record<string, Omit<Theme, 'id' | 'name' | 'images'>> = {
   default: {
     colors: {
       cover_background: 'linear-gradient(160deg, #FF5F6D 0%, #FFC371 100%)',
@@ -13,6 +13,8 @@ export const THEME_PRESETS: Record<string, Omit<Theme, 'id' | 'name'>> = {
     fonts: {
       title_font: 'BlackHanSans',
       body_font: 'Pretendard',
+      title_size: 42,
+      body_size: 16,
       cover_title: 120,
       cover_subtitle: 32,
       news_title: 48,
@@ -25,12 +27,16 @@ export const THEME_PRESETS: Record<string, Omit<Theme, 'id' | 'name'>> = {
       summary_item_title: 22,
     },
     texts: {
+      title: 'GeekNews',
+      subtitle: 'Daily Tech & Development News',
+      date_format: 'YYYY.MM.DD',
       cover_title: '모드뉴스',
       cover_subtitle: '모여봐요 개발자와 AI의 숲',
       summary_title: 'GeekNews 요약',
       summary_subtitle: '오늘의 주요 뉴스',
       summary_footer_text: '총 {count}개의 뉴스를 확인했어요',
       summary_source: '출처: GeekNews (news.hada.io)',
+      news_card_prefix: 'GeekNews',
     },
   },
   purple: {
@@ -46,6 +52,8 @@ export const THEME_PRESETS: Record<string, Omit<Theme, 'id' | 'name'>> = {
     fonts: {
       title_font: 'BlackHanSans',
       body_font: 'Pretendard',
+      title_size: 40,
+      body_size: 14,
       cover_title: 110,
       cover_subtitle: 30,
       news_title: 46,
@@ -58,12 +66,16 @@ export const THEME_PRESETS: Record<string, Omit<Theme, 'id' | 'name'>> = {
       summary_item_title: 20,
     },
     texts: {
+      title: 'GeekNews',
+      subtitle: 'Daily Tech & Development News',
+      date_format: 'YYYY.MM.DD',
       cover_title: '퍼플뉴스',
       cover_subtitle: '신비로운 개발의 세계',
       summary_title: 'GeekNews 요약',
       summary_subtitle: '오늘의 주요 뉴스',
       summary_footer_text: '총 {count}개의 뉴스를 확인했어요',
       summary_source: '출처: GeekNews (news.hada.io)',
+      news_card_prefix: 'GeekNews',
     },
   },
 };
@@ -85,8 +97,7 @@ THEME_PRESETS = {
         "colors": {
             "cover_background": "${theme.colors.cover_background}",
             "news_background": "${theme.colors.news_background}",
-            "summary_background": "${theme.colors.summary_background}",
-            "end_background": "${theme.colors.end_background}"
+            "summary_background": "${theme.colors.summary_background}"
         },
         "fonts": {
             "cover_title": "${theme.fonts.cover_title}",

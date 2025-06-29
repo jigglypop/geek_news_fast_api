@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, devtools } from 'zustand/middleware';
 
 interface SavedState {
   version: string;
@@ -36,8 +36,9 @@ interface PersistState {
 const API_BASE_URL = 'http://localhost:8000';
 
 export const usePersistStore = create<PersistState>()(
-  persist(
-    (set, get) => ({
+  devtools(
+    persist(
+      (set, get) => ({
       savedState: null,
       lastSavedAt: null,
       autoSaveEnabled: false,
@@ -132,14 +133,18 @@ export const usePersistStore = create<PersistState>()(
       clearLocal: () => {
         set({ savedState: null, lastSavedAt: null });
       },
-    }),
-    {
-      name: 'geek-news-persist',
-      partialize: (state) => ({
-        savedState: state.savedState,
-        lastSavedAt: state.lastSavedAt,
-        autoSaveEnabled: state.autoSaveEnabled,
       }),
+      {
+        name: 'geek-news-persist',
+        partialize: (state) => ({
+          savedState: state.savedState,
+          lastSavedAt: state.lastSavedAt,
+          autoSaveEnabled: state.autoSaveEnabled,
+        }),
+      }
+    ),
+    {
+      name: 'persist-storage',
     }
   )
 ); 

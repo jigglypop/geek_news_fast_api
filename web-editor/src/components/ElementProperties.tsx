@@ -1,6 +1,8 @@
 import React from 'react';
 import type { DraggableElement } from '../types';
 import ColorPicker from './ColorPicker';
+import { Trash2 } from 'lucide-react';
+import { useElementStore } from '../store/elementStore';
 
 interface ElementPropertiesProps {
   element: DraggableElement | null;
@@ -21,9 +23,11 @@ const LabeledInput: React.FC<{ label: string; children: React.ReactNode }> = ({ 
   </div>
 );
 
-const baseInputStyles = "w-full px-2.5 py-1.5 border border-gray-600 bg-gray-800 text-white rounded-md text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+const baseInputStyles = "w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-md text-base focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
 
 const ElementProperties: React.FC<ElementPropertiesProps> = ({ element, onUpdateElement }) => {
+  const deleteElement = useElementStore((state) => state.deleteElement);
+  
   if (!element) {
     return (
       <div className="bg-gray-800 rounded-lg p-4 mt-4 border border-gray-700">
@@ -50,9 +54,18 @@ const ElementProperties: React.FC<ElementPropertiesProps> = ({ element, onUpdate
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 mt-4 border border-gray-700">
-      <h4 className="text-base font-semibold mb-4 text-gray-100">
-        {getElementTypeName()} 속성
-      </h4>
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-base font-semibold text-gray-100">
+          {getElementTypeName()} 속성
+        </h4>
+        <button
+          onClick={() => deleteElement(element.id)}
+          className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-md transition-colors"
+          title="요소 삭제"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
       
       <Section title="위치 & 크기">
         <div className="grid grid-cols-2 gap-3">
